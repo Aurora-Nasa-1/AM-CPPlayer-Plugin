@@ -1,23 +1,21 @@
-# Virtual environments, build and Python caches
-.venv/
-__pycache__/
-*.py[cod]
-*.egg-info/
-build/
-dist/
-.pytest_cache/
-.ruff_cache/
-.mypy_cache/
-.coverage
-.coverage.*
-target/
-/native/target/
+# Rust
+/target/
+*.dll
 *.so
-*.pyd
 *.dylib
 
-# Local configuration and private files
-.env
-.env.*
-!.env.example
-/.local/
+# CPPlayer module build output
+/dist/
+/build/
+
+# Local configuration
+/.env
+/.env.*
+!/.env.example
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db

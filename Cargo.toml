@@ -1,0 +1,37 @@
+[package]
+name = "am-sdk-provider"
+version = "1.0.0"
+edition = "2021"
+license = "MIT"
+description = "Apple Music provider for CPPlayer KMP SDK (kmp-sdk-v1)"
+publish = false
+
+[lib]
+name = "am_sdk_provider"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["jni"]
+jni = ["dep:jni"]
+
+[dependencies]
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "rustls-tls",
+    "gzip",
+    "brotli",
+    "deflate",
+] }
+tokio = { version = "1", features = ["rt-multi-thread", "time", "sync", "macros"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+regex-lite = "0.1"
+base64 = "0.22"
+url = "2"
+jni = { version = "0.21", optional = true }
+
+[profile.release]
+opt-level = 2
+lto = "thin"
+codegen-units = 16
+strip = true
