@@ -25,29 +25,36 @@ jobs:
           - name: windows-x64
             os: windows-latest
             platform: windows
+            target: x86_64-pc-windows-msvc
             artifact: apple-music-windows.zip
           - name: linux-x64
             os: ubuntu-latest
             platform: linux
+            target: x86_64-unknown-linux-gnu
             artifact: apple-music-linux.zip
           - name: macos-arm64
-            os: macos-14
+            os: macos-latest
             platform: macos
+            target: aarch64-apple-darwin
             artifact: apple-music-macos.zip
 
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
 
       - name: Build and package module
         shell: pwsh
-        run: ./scripts/package.ps1 -Platform ${{ matrix.platform }}
+        run: ./scripts/package.ps1 -Platform ${{ matrix.platform }} -Target ${{ matrix.target }}
 
       - name: Upload module artifact
         uses: actions/upload-artifact@v4

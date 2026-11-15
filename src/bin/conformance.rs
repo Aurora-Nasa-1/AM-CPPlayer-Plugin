@@ -53,7 +53,9 @@ fn decode_hex(text: &str) -> Vec<u8> {
         .filter(|byte| byte.is_ascii_hexdigit())
         .collect();
     digits
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|pair| {
             let high = (pair[0] as char).to_digit(16).unwrap_or(0);
             let low = (pair[1] as char).to_digit(16).unwrap_or(0);
