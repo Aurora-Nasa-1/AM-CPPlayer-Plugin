@@ -83,8 +83,14 @@ Provider 只声明并实现以下操作，其余操作由宿主直接判为 `Uns
 
 | 路径 | 操作 | 返回 | 平台 |
 |---|---|---|---|
-| 加密 HLS | `resolveDrm` + `exchangeLicense` | `ResolvedMedia`（`resource` + `DrmDescriptor`） | Android Media3 / Widevine |
+| 加密 HLS | `resolveDrm` + `exchangeLicense` | `ResolvedMedia`（`resource` + `DrmDescriptor`） | Android Media3 / Windows WebView EME（均为 Widevine） |
 | 明文试听 | `resolve` | 公开 `attributes.previews` AAC/M4A | 所有平台 |
+
+| 平台 | 解密载体 | key system |
+|---|---|---|
+| Android | Media3 `FrameworkMediaDrm`（Flick 模式强制切 Media3） | Widevine |
+| Windows 桌面 | WebView EME 桥（Edge / Chrome / WebView2 Runtime 内核 + hls.js） | Widevine |
+| macOS / iOS | 原生 FairPlay | FairPlay（宿主尚未接入） |
 
 ### DRM 路径
 
@@ -106,6 +112,12 @@ Provider 只声明并实现以下操作，其余操作由宿主直接判为 `Uns
 Android 只支持 Widevine），Provider 返回 `Unsupported`，宿主回退到明文
 preview；不会返回一个必然播放失败的加密 URL。
 
+Windows 侧没有系统级 Widevine 接口，宿主改用浏览器内核解密：本地播放页经
+`hls.js` 建立 EME 会话，challenge 通过 Provider 的 `exchangeLicense` 换成
+license 后原样回传 CDM。Provider 在这条链路上与 Android 完全一致，不需要
+感知解密发生在哪里。真机 / 真内核验收步骤见 CPPlayer-KMP 仓库的
+`docs/dev/providers/DRM_VERIFICATION.md`。
+
 ### 明文试听路径
 
 - 未加密 AAC/M4A，可直接交给宿主播放器；
@@ -116,6 +128,31 @@ preview；不会返回一个必然播放失败的加密 URL。
 
 DRM 加密流不能进入下载、磁盘流缓存、`StreamLocalizer` 或 `LocalServer`
 导出；这些路径只处理明文。
+
+### DRM 链路验收
+
+协议与信令有单元/契约测试，但真实解密必须用 CDM 与 Apple 凭据验证：
+
+```powershell
+# 真实凭据 + 本机浏览器内核，跑通 Widevine challenge → license → 解密帧
+$env:AM_MEDIA_USER_TOKEN = '<media-user-token>'
+$env:AM_DEVELOPER_TOKEN  = '<developer-token>'   # 可留空
+cargo run --release --bin drm_e2e -- 1440857781 drm-standard
+```
+
+工具会打印 `resolved` / `license` / `decoded frames` / `duration` 四个断言，
+不含 challenge 或 license 字节。Android 真机与 FairPlay 的验收步骤见
+CPPlayer-KMP 仓库 `docs/dev/providers/DRM_VERIFICATION.md`。
+
+`drm_e2e` 需要满足两个条件：本机有 Edge / Chrome / WebView2 内核（从中取真实
+Widevine challenge），以及有效的 Apple Music 订阅 token。缺任何一个都会明确
+失败，不会伪造通过。可用 `AM_HLS_JS=<path>` 指定本地 hls.js，否则从 jsDelivr 加载。
+
+Windows 上需要 MSVC 环境；没有全局 `cl.exe` 时用仓库脚本同样的方式加载：
+
+```powershell
+cmd /c "`"E:\project\build\VC\Auxiliary\Build\vcvars64.bat`" >nul 2>&1 && cargo run --release --bin drm_e2e -- 1440857781 drm-standard"
+```
 
 ## 构建
 
@@ -138,12 +175,23 @@ am_sdk_provider.dll
 lib/x86_64/am_sdk_provider.dll
 ```
 
+包内 `manifest.json` 的 `type` 是 `native`：同一个二进制同时导出 JNI
+`NativeSession` 与 C ABI v1（`cpp_*`），CPPlayer 1.9+ 的原生构建按 C ABI
+直调。Windows 打包会校验五个 `cpp_*` 符号，缺任何一个都直接失败，不会产出
+只能装不能用的包。
+
 其他平台：
 
 ```powershell
 pwsh -File scripts/package.ps1 -Platform linux -Target x86_64-unknown-linux-gnu
+pwsh -File scripts/package.ps1 -Platform macos -Target aarch64-apple-darwin
+$env:ANDROID_HOME = '<Android SDK>'
 pwsh -File scripts/package.ps1 -Platform android -Target aarch64-linux-android
 ```
+
+Android 需要 NDK（`ANDROID_NDK_HOME`，或 `ANDROID_HOME/ndk/<version>`）与
+`rustup target add aarch64-linux-android`。包内库位于
+`lib/arm64-v8a/libam_sdk_provider.so`，`entryPoint` 指向该路径。
 
 ## 发布
 
@@ -153,6 +201,7 @@ pwsh -File scripts/package.ps1 -Platform android -Target aarch64-linux-android
 - `apple-music-windows.zip`
 - `apple-music-linux.zip`
 - `apple-music-macos.zip`
+- `apple-music-android.zip`
 - `SHA256SUMS.txt`
 
 发布使用 GitHub Actions 内置的 `GITHUB_TOKEN` 和 `gh release create`，不依赖
