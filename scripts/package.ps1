@@ -53,17 +53,31 @@ function Get-CrateVersion {
 
 $resolvedVersion = if ($Version) { $Version } else { Get-CrateVersion }
 
+function Find-VcVars {
+    if ($env:VCVARS64) { return $env:VCVARS64 }
+    $known = "E:\project\build\VC\Auxiliary\Build\vcvars64.bat"
+    if (Test-Path $known) { return $known }
+    $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+    if (Test-Path $vswhere) {
+        $install = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+        if ($install) {
+            $candidate = Join-Path $install "VC\Auxiliary\Build\vcvars64.bat"
+            if (Test-Path $candidate) { return $candidate }
+        }
+    }
+    return $null
+}
+
+function Invoke-WithMsvc([string]$command) {
+    $vcvars = Find-VcVars
+    if (-not $vcvars) { return cmd /c $command }
+    return cmd /c "`"$vcvars`" >nul 2>&1 && $command"
+}
+
 if (-not $SkipBuild) {
     $envArgs = if ($Target) { @("--target", $Target) } else { @() }
     if ($Platform -eq "windows") {
-        $vcvars = "E:\project\build\VC\Auxiliary\Build\vcvars64.bat"
-        if (Test-Path $vcvars) {
-            # cmd is required: vcvars64.bat is a batch script that only exports
-            # environment variables into its own process.
-            cmd /c "`"$vcvars`" >nul 2>&1 && cargo build --release $($envArgs -join ' ')"
-        } else {
-            cargo build --release @envArgs
-        }
+        Invoke-WithMsvc "cargo build --release $($envArgs -join ' ')"
     } elseif ($Platform -eq "android") {
         $sdk = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } elseif ($env:ANDROID_SDK_ROOT) { $env:ANDROID_SDK_ROOT } else { "" }
         $ndkRoot = if ($env:ANDROID_NDK_HOME) { $env:ANDROID_NDK_HOME } else { "" }
@@ -102,7 +116,7 @@ if (-not (Test-Path $built)) { throw "Missing build output: $built" }
 if ($Platform -eq "windows") {
     # A build that only exports JNI would install but fail at call time on the
     # GraalVM native host. Fail the package instead of shipping it.
-    $exports = cmd /c "`"E:\project\build\VC\Auxiliary\Build\vcvars64.bat`" >nul 2>&1 && dumpbin /EXPORTS `"$built`""
+    $exports = Invoke-WithMsvc "dumpbin /EXPORTS `"$built`""
     foreach ($symbol in @("cpp_abi_version", "cpp_create", "cpp_invoke", "cpp_cancel", "cpp_close")) {
         if (-not ($exports -match "\b$symbol\b")) {
             throw "Missing C ABI symbol $symbol in $built"
