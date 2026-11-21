@@ -35,6 +35,9 @@ Provider 只声明并实现以下操作，其余操作由宿主直接判为 `Uns
 
 ## 会话输入
 
+Apple Music 登录需要手动提供网页会话中的 `media-user-token`。CPPlayer 的登录入口和
+安全注意事项见[登录说明](docs/APPLE_MUSIC_LOGIN.md)。
+
 | 输入 | 格式 |
 |---|---|
 | `credential` | JSON 对象，或直接给 `media-user-token` 字符串 |
